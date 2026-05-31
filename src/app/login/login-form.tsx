@@ -12,12 +12,15 @@ export default function LoginForm({ redirectTo }: { redirectTo: string }) {
     <form action={formAction} className="flex flex-col gap-3">
       <input type="hidden" name="redirect" value={redirectTo} />
       <div>
-        <label className="text-sm text-zinc-500">이메일</label>
+        <label className="text-sm text-zinc-500">아이디</label>
         <input
-          name="email"
-          type="email"
+          name="username"
+          type="text"
           required
-          autoComplete="email"
+          autoComplete="username"
+          autoCapitalize="none"
+          spellCheck={false}
+          placeholder="예: rohji"
           className="mt-1 w-full rounded-lg border border-zinc-300 px-3 py-2 text-sm"
         />
       </div>
