@@ -82,22 +82,63 @@ create trigger trg_cards_updated_at
 create table if not exists card_holdings (
   card_id       bigint not null references cards(id) on delete cascade,
   owner_id      uuid   not null references auth.users(id),  -- 로그인 어드민(비공개)
-  qty_available integer not null default 0,  -- 판매/교환 가능
-  qty_reserved  integer not null default 0,  -- 예약중
-  qty_completed integer not null default 0,  -- 완료(공개 숨김)
+  qty_total     integer not null default 0,  -- 보유(총 개수)
+  qty_keep      integer not null default 0,  -- 소장/비매(공개 숨김 — 판매/교환 안 함)
   is_wanted     boolean not null default false,
   updated_at    timestamptz not null default now(),
   primary key (card_id, owner_id),
-  constraint qty_nonneg check (qty_available >= 0 and qty_reserved >= 0 and qty_completed >= 0)
+  constraint qty_nonneg check (qty_total >= 0 and qty_keep >= 0)
+  -- 예약/완료는 card_deals(예약중/완료 건수)로 파생. 가능 = 보유 - 예약 - 완료 - 소장
 );
+
+-- ---------- 5-2. 거래(예약/판매/교환) — 보유자별 건별 기록 ----------
+create table if not exists card_deals (
+  id          bigint generated always as identity primary key,
+  card_id     bigint not null references cards(id) on delete cascade,
+  owner_id    uuid   not null references auth.users(id),  -- 어드민(비공개)
+  direction   text   not null default 'out',   -- out(방출:내 카드 판매/교환) | in(영입:희망카드 구매/교환)
+  kind        text   not null default 'sale',   -- sale(판매) | trade(교환)
+  price       integer,                           -- 가격(판매/구매 시)
+  counterpart text,                              -- 상대(누구)
+  meet_at     timestamptz,                       -- 약속 일시
+  meet_place  text,                              -- 장소
+  memo        text,
+  status      text   not null default 'reserved',-- reserved(예약중) | done(완료)
+  created_at  timestamptz not null default now(),
+  updated_at  timestamptz not null default now()
+);
+create index if not exists idx_deals_card  on card_deals(card_id);
+create index if not exists idx_deals_owner on card_deals(owner_id);
+
+drop trigger if exists trg_deals_updated_at on card_deals;
+create trigger trg_deals_updated_at
+  before update on card_deals for each row execute function set_updated_at();
 create index if not exists idx_holdings_owner on card_holdings(owner_id);
 
 drop trigger if exists trg_holdings_updated_at on card_holdings;
 create trigger trg_holdings_updated_at
   before update on card_holdings for each row execute function set_updated_at();
 
--- ---------- 6. 공개용 뷰 (완료수량/owner/내부필드 제외, owner 합산) ----------
-create or replace view public_cards as
+-- ---------- 6. 공개용 뷰 (owner 합산, 내부필드 제외) ----------
+-- 가능 = 보유 - 예약 - 완료 - 소장 (owner별 계산 후 합산). 예약 = 예약중 거래 건수.
+drop view if exists public_cards;
+create view public_cards as
+with dealc as (
+  -- 방출(out) 거래만 보유 차감에 반영. 영입(in)은 재고와 무관.
+  select card_id, owner_id,
+         count(*) filter (where status = 'reserved' and direction = 'out') as reserved,
+         count(*) filter (where status = 'done'     and direction = 'out') as done
+  from card_deals group by card_id, owner_id
+),
+agg as (
+  select h.card_id,
+         sum(greatest(h.qty_total - coalesce(d.reserved,0) - coalesce(d.done,0) - h.qty_keep, 0)) as qty_available,
+         sum(coalesce(d.reserved,0)) as qty_reserved,
+         bool_or(h.is_wanted)        as is_wanted
+  from card_holdings h
+  left join dealc d on d.card_id = h.card_id and d.owner_id = h.owner_id
+  group by h.card_id
+)
 select
   c.id,
   c.team_id,
@@ -113,27 +154,32 @@ select
   c.card_number,
   c.variant,
   c.title,
-  c.image_url,
   c.is_special,
-  coalesce(c.price_override, ct.default_price)        as price,
-  coalesce(sum(h.qty_available), 0)                   as qty_available,
-  coalesce(sum(h.qty_reserved), 0)                    as qty_reserved,
-  coalesce(sum(h.qty_available + h.qty_reserved), 0)  as qty_owned,   -- 보유 총량
-  coalesce(bool_or(h.is_wanted), false)               as is_wanted,
+  coalesce(c.price_override, ct.default_price)            as price,
+  coalesce(a.qty_available, 0)                            as qty_available,
+  coalesce(a.qty_reserved, 0)                             as qty_reserved,
+  coalesce(a.qty_available, 0) + coalesce(a.qty_reserved, 0) as qty_owned,  -- 가능+예약(공개 보유총)
+  coalesce(a.is_wanted, false)                            as is_wanted,
   c.memo,
   c.created_at
 from cards c
 join teams t        on t.id = c.team_id
 join card_types ct  on ct.id = c.card_type_id
 left join players p on p.id = c.player_id
-left join card_holdings h on h.card_id = c.id
-group by c.id, t.name, t.slug, p.name, p.position, p.jersey_no,
-         ct.id, ct.name, ct.code, c.price_override, ct.default_price;
+left join agg a     on a.card_id = c.id;
 
 -- 뷰는 정의자(소유자) 권한으로 동작 → anon은 cards/card_holdings 직접 접근 불가해도
 -- 이 뷰로는 공개 컬럼/집계만 읽을 수 있다. (완료수량/owner/wanted_by 노출 안 됨)
 alter view public_cards set (security_invoker = off);
 grant select on public_cards to anon, authenticated;
+
+-- 수정 로그 행위자 표시명 매핑 (어드민 전용). auth.users 메타에서 display_name.
+create or replace view admin_profiles as
+select id, coalesce(raw_user_meta_data->>'display_name', email) as display_name
+from auth.users;
+alter view admin_profiles set (security_invoker = off);
+revoke all on admin_profiles from anon;
+grant select on admin_profiles to authenticated;
 
 -- =====================================================================
 -- 7. RLS
@@ -143,6 +189,7 @@ alter table players       enable row level security;
 alter table card_types    enable row level security;
 alter table cards         enable row level security;
 alter table card_holdings enable row level security;
+alter table card_deals    enable row level security;
 
 -- 읽기: teams / players / card_types 는 민감정보 없음 → anon 허용
 drop policy if exists "public read teams"   on teams;
@@ -169,6 +216,12 @@ drop policy if exists "own holdings read"  on card_holdings;
 drop policy if exists "own holdings write" on card_holdings;
 create policy "own holdings read"  on card_holdings for select to authenticated using (owner_id = auth.uid());
 create policy "own holdings write" on card_holdings for all    to authenticated using (owner_id = auth.uid()) with check (owner_id = auth.uid());
+
+-- 거래(예약/판매/교환): 본인 소유 행만 read/write.
+drop policy if exists "own deals read"  on card_deals;
+drop policy if exists "own deals write" on card_deals;
+create policy "own deals read"  on card_deals for select to authenticated using (owner_id = auth.uid());
+create policy "own deals write" on card_deals for all    to authenticated using (owner_id = auth.uid()) with check (owner_id = auth.uid());
 
 -- =====================================================================
 -- 8. 이미지 Storage 버킷 (어드민 업로드 / 공개 읽기)
@@ -210,7 +263,8 @@ insert into card_types (code, name, default_price, sort_order) values
   ('parallel',   '패러렐',       10000, 5),
   ('charm',      '승리부적',     20000, 6),
   -- 스페셜은 등급이 아니라 cards.is_special 플래그(레전드 = 노멀/홀로/패러렐/오토) → card_type 없음
-  ('auto',       '친필사인',         0, 8)   -- 0 = 가격문의 (formatPrice가 '가격문의'로 표시)
+  ('auto',       '친필사인',         0, 8),  -- 0 = 가격문의 (formatPrice가 '가격문의'로 표시)
+  ('normal',     '노멀',          1000, 0)   -- 레전드(스페셜) 전용: 홈/어웨이 구분 없는 단일 노멀
 on conflict (code) do nothing;
 
 -- 9.3 체크리스트 스테이징 (선수 1명 = 1행)
@@ -233,7 +287,7 @@ insert into seed_chk (card_no, team_slug, pos, jersey, pname, alphabet, holo, pa
 ('KR-26/T06','lg','투수',1, '임찬규',  false,false,false,true, false,false),
 ('KR-26/T07','lg','포수',27,'박동원',  false,true, true, false,true, false),
 ('KR-26/T08','lg','내야수',6,'구본혁',  true, false,false,false,false,false),
-('KR-26/T09','lg','내야수',2,'문보경',  true, true, true, false,true, false),
+('KR-26/T09','lg','내야수',2,'문보경',  true, true, true, true,true, false),
 ('KR-26/T10','lg','내야수',4,'신민재',  true, false,false,false,false,false),
 ('KR-26/T11','lg','내야수',10,'오지환', false,true, true, false,true, false),
 ('KR-26/T12','lg','외야수',8,'문성주',  true, false,false,false,true, false),
@@ -279,8 +333,8 @@ insert into seed_chk (card_no, team_slug, pos, jersey, pname, alphabet, holo, pa
 ('KR-26/L07','samsung','포수',47,'강민호', false,true, true, false,true, false),
 ('KR-26/L08','samsung','내야수',30,'김영웅',false,true, true, true, false,false),
 ('KR-26/L09','samsung','내야수',16,'류지혁',true, false,false,false,false,false),
-('KR-26/L10','samsung','내야수',7,'이재현', true, false,false,false,false,false),
-('KR-26/L11','samsung','외야수',5,'구자욱', true, true, true, false,true, false),
+('KR-26/L10','samsung','내야수',7,'이재현', true, false,false,true,false,false),
+('KR-26/L11','samsung','외야수',5,'구자욱', true, true, true, true,true, false),
 ('KR-26/L12','samsung','외야수',39,'김성윤',true, false,false,false,false,false),
 ('KR-26/L13','samsung','외야수',58,'김지찬',true, true, true, false,true, false),
 ('KR-26/L14','samsung','외야수',34,'최형우',false,true, true, false,true, false),
@@ -294,7 +348,7 @@ insert into seed_chk (card_no, team_slug, pos, jersey, pname, alphabet, holo, pa
 ('KR-26/N07','nc','포수',25,'김형준',  true, false,false,false,true, false),
 ('KR-26/N08','nc','내야수',7,'김주원',  false,true, true, true, true, false),
 ('KR-26/N09','nc','내야수',44,'김휘집', true, false,false,false,false,false),
-('KR-26/N10','nc','내야수',2,'박민우',  true, true, true, false,false,false),
+('KR-26/N10','nc','내야수',2,'박민우',  true, true, true, true,false,false),
 ('KR-26/N11','nc','내야수',14,'최정원', true, false,false,false,true, false),
 ('KR-26/N12','nc','내야수',9,'신재인',  true, false,false,false,false,false),
 ('KR-26/N13','nc','외야수',37,'박건우', false,true, true, false,false,false),
@@ -358,7 +412,7 @@ insert into seed_chk (card_no, team_slug, pos, jersey, pname, alphabet, holo, pa
 ('KR-26/D11','doosan','내야수',62,'안재석',true, false,false,false,false,false),
 ('KR-26/D12','doosan','내야수',53,'양석환',true, false,false,false,false,false),
 ('KR-26/D13','doosan','내야수',6,'오명진', false,true, true, true, false,false),
-('KR-26/D14','doosan','외야수',31,'정수빈',true, true, true, false,true, false),
+('KR-26/D14','doosan','외야수',31,'정수빈',true, true, true, true,true, false),
 -- 키움
 ('KR-26/H01','kiwoom','투수',35,'박윤성', true, false,false,false,false,false),
 ('KR-26/H02','kiwoom','투수',21,'김성진', true, false,false,false,false,false),
@@ -366,7 +420,7 @@ insert into seed_chk (card_no, team_slug, pos, jersey, pname, alphabet, holo, pa
 ('KR-26/H04','kiwoom','투수',13,'정현우', true, false,false,true, true, false),
 ('KR-26/H05','kiwoom','투수',20,'조영건', true, true, true, false,false,false),
 ('KR-26/H06','kiwoom','투수',50,'하영민', true, false,false,false,false,false),
-('KR-26/H07','kiwoom','포수',12,'김건희', true, false,false,false,true, false),
+('KR-26/H07','kiwoom','포수',12,'김건희', true, false,false,true,true, false),
 ('KR-26/H08','kiwoom','내야수',1,'김태진', true, false,false,false,false,false),
 ('KR-26/H09','kiwoom','외야수',43,'박찬혁',true, false,false,false,false,false),
 ('KR-26/H10','kiwoom','내야수',9,'안치홍', true, true, true, false,false,false),
@@ -399,7 +453,9 @@ from seed_chk s
 join teams t   on t.slug = s.team_slug
 join players p on p.team_id = t.id and p.name = s.pname
 join card_types ct on
-     ct.code in ('normal_home','normal_away')
+     -- 일반 선수: 노멀 홈+어웨이 / 레전드: 단일 노멀
+     (not s.is_special and ct.code in ('normal_home','normal_away'))
+  or (s.is_special and ct.code = 'normal')
   or (ct.code = 'alphabet' and s.alphabet)
   or (ct.code = 'holo'     and s.holo)
   or (ct.code = 'parallel' and s.parallel)
@@ -453,6 +509,9 @@ begin
   if TG_TABLE_NAME = 'card_holdings' then
     v_card_id := coalesce((v_new->>'card_id')::bigint, (v_old->>'card_id')::bigint);
     v_pk := v_card_id::text || ':' || coalesce(v_new->>'owner_id', v_old->>'owner_id');
+  elsif TG_TABLE_NAME = 'card_deals' then
+    v_card_id := coalesce((v_new->>'card_id')::bigint, (v_old->>'card_id')::bigint);
+    v_pk := coalesce(v_new->>'id', v_old->>'id');
   elsif TG_TABLE_NAME = 'cards' then
     v_card_id := coalesce((v_new->>'id')::bigint, (v_old->>'id')::bigint);
     v_pk := v_card_id::text;
@@ -468,11 +527,14 @@ end$$;
 drop trigger if exists trg_audit_holdings on card_holdings;
 drop trigger if exists trg_audit_cards    on cards;
 drop trigger if exists trg_audit_types    on card_types;
+drop trigger if exists trg_audit_deals    on card_deals;
 create trigger trg_audit_holdings after insert or update or delete on card_holdings
   for each row execute function log_audit();
 create trigger trg_audit_cards    after insert or update or delete on cards
   for each row execute function log_audit();
 create trigger trg_audit_types    after insert or update or delete on card_types
+  for each row execute function log_audit();
+create trigger trg_audit_deals    after insert or update or delete on card_deals
   for each row execute function log_audit();
 
 -- 감사 로그 RLS: 어드민끼리 읽기 가능, 직접 쓰기 불가(트리거가 정의자 권한으로 기록)
