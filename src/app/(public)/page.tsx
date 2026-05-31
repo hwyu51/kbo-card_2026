@@ -1,6 +1,6 @@
 import { createClient } from "@/lib/supabase/server";
 import type { CardType, PublicCard, Team } from "@/lib/types";
-import CardItem from "./_components/card-item";
+import CardTable from "./_components/card-table";
 import FilterBar from "./_components/filter-bar";
 
 export const dynamic = "force-dynamic";
@@ -35,6 +35,10 @@ export default async function HomePage({
   const allCards = (cardsData ?? []) as PublicCard[];
   const teams = (teamsData ?? []) as Team[];
   const cardTypes = (typesData ?? []) as CardType[];
+
+  // 실제 카드가 존재하는 종류만 필터 옵션으로 노출 (빈 종류 숨김)
+  const presentCodes = new Set(allCards.map((c) => c.card_type_code));
+  const visibleTypes = cardTypes.filter((ct) => presentCodes.has(ct.code));
 
   // 상단 지표 (전체 기준)
   const totalOwned = allCards.reduce((s, c) => s + c.qty_owned, 0);
@@ -71,7 +75,7 @@ export default async function HomePage({
         </div>
       </section>
 
-      <FilterBar teams={teams} cardTypes={cardTypes} />
+      <FilterBar teams={teams} cardTypes={visibleTypes} />
 
       <div className="text-sm text-zinc-500">{filtered.length}개</div>
 
@@ -80,11 +84,7 @@ export default async function HomePage({
           조건에 맞는 카드가 없어요.
         </div>
       ) : (
-        <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 md:grid-cols-4">
-          {filtered.map((c) => (
-            <CardItem key={c.id} card={c} />
-          ))}
-        </div>
+        <CardTable cards={filtered} teams={teams} />
       )}
     </div>
   );

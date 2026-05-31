@@ -52,7 +52,6 @@ create table if not exists cards (
   card_number    text,                   -- 카드연번 (예: KR-26/T01)
   variant        text,                   -- 부가 구분
   title          text,                   -- 표시명 (비면 선수명+종류)
-  image_url      text,
   price_override integer,                -- 개별 가격(없으면 종류 기본가)
   is_special     boolean not null default false,  -- 스페셜(레전드) 카드 여부
   memo           text,
@@ -151,6 +150,7 @@ select
   ct.id         as card_type_id,
   ct.name       as card_type_name,
   ct.code       as card_type_code,
+  ct.sort_order as card_type_sort,
   c.card_number,
   c.variant,
   c.title,
@@ -223,25 +223,8 @@ drop policy if exists "own deals write" on card_deals;
 create policy "own deals read"  on card_deals for select to authenticated using (owner_id = auth.uid());
 create policy "own deals write" on card_deals for all    to authenticated using (owner_id = auth.uid()) with check (owner_id = auth.uid());
 
--- =====================================================================
--- 8. 이미지 Storage 버킷 (어드민 업로드 / 공개 읽기)
--- =====================================================================
-insert into storage.buckets (id, name, public)
-values ('card-images', 'card-images', true)
-on conflict (id) do nothing;
-
-drop policy if exists "public read card images"   on storage.objects;
-drop policy if exists "admin insert card images"  on storage.objects;
-drop policy if exists "admin update card images"  on storage.objects;
-drop policy if exists "admin delete card images"  on storage.objects;
-create policy "public read card images"  on storage.objects
-  for select using (bucket_id = 'card-images');
-create policy "admin insert card images" on storage.objects
-  for insert to authenticated with check (bucket_id = 'card-images');
-create policy "admin update card images" on storage.objects
-  for update to authenticated using (bucket_id = 'card-images');
-create policy "admin delete card images" on storage.objects
-  for delete to authenticated using (bucket_id = 'card-images');
+-- (이미지 기능은 현재 미사용 — 카드 이미지 대신 표/카탈로그 뷰로 표시.
+--  추후 이미지 도입 시 Storage 버킷 + cards.image_url 컬럼을 다시 추가할 것.)
 
 -- =====================================================================
 -- 9. 시드 데이터  (감사 트리거보다 먼저 → 시드는 로그에 안 잡힘)

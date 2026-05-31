@@ -109,9 +109,17 @@ export default function CardAdminPanel({
         <div className="text-xs text-zinc-400">
           예약 {reservedOut} · 완료 {doneOut}
         </div>
-        <label className="ml-auto flex items-center gap-1.5 text-sm">
-          <input type="checkbox" checked={wanted} onChange={(e) => setWanted(e.target.checked)} />
-          희망
+        <label
+          className="ml-auto flex items-center gap-1.5 text-sm"
+          title={total > 0 ? "보유 중인 카드는 희망에 넣을 수 없어요" : undefined}
+        >
+          <input
+            type="checkbox"
+            checked={total > 0 ? false : wanted}
+            disabled={total > 0}
+            onChange={(e) => setWanted(e.target.checked)}
+          />
+          <span className={total > 0 ? "text-zinc-400" : ""}>희망</span>
         </label>
         <button
           onClick={saveHolding}

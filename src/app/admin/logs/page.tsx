@@ -1,4 +1,5 @@
 import { createClient } from "@/lib/supabase/server";
+import { TABLE_LABEL } from "@/lib/audit";
 import LogsView, { type LogGroup } from "./logs-view";
 
 export const dynamic = "force-dynamic";
@@ -11,13 +12,6 @@ type AuditRow = {
   actor: string | null;
   changes: Record<string, unknown> | null;
   changed_at: string;
-};
-
-const TABLE_LABEL: Record<string, string> = {
-  card_holdings: "보유",
-  card_deals: "거래",
-  cards: "카탈로그",
-  card_types: "가격설정",
 };
 
 export default async function LogsPage() {

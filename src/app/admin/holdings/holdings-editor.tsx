@@ -93,15 +93,23 @@ export default function HoldingsEditor({
     setKeep(nextKeep);
   };
 
-  const buildRows = (t: number[], k: number[]): HoldingRow[] =>
-    flat.map((f, i) => ({
-      card_id: f.card_id,
-      qty_total: t[i],
-      qty_keep: k[i],
-      is_wanted: wanted[i],
-    }));
+  // 변경된 행만 추려서 저장 (불필요한 빈 행/감사로그 양산 방지)
+  const changedRows = (t: number[], k: number[]): HoldingRow[] =>
+    flat
+      .map((f, i) => ({ f, i }))
+      .filter(({ i }) => t[i] !== initTotal[i] || k[i] !== initKeep[i])
+      .map(({ f, i }) => ({
+        card_id: f.card_id,
+        qty_total: t[i],
+        qty_keep: k[i],
+        is_wanted: wanted[i],
+      }));
 
   const persist = (rows: HoldingRow[], okMsg: string) => {
+    if (rows.length === 0) {
+      setMsg("변경 사항이 없어요.");
+      return;
+    }
     setMsg(null);
     start(async () => {
       const res = await saveHoldings(rows);
@@ -112,7 +120,7 @@ export default function HoldingsEditor({
     });
   };
 
-  const onSave = () => persist(buildRows(total, keep), "저장됐어요.");
+  const onSave = () => persist(changedRows(total, keep), "저장됐어요.");
 
   const onReset = () => {
     if (
@@ -122,9 +130,10 @@ export default function HoldingsEditor({
     )
       return;
     const z = flat.map(() => 0);
+    const rows = changedRows(z, z); // 기존에 값이 있던 행만 0으로 → saveHoldings가 삭제
     setTotal(z);
     setKeep([...z]);
-    persist(buildRows(z, z), "초기화했어요.");
+    persist(rows, "초기화했어요.");
   };
 
   const avail = (i: number) => Math.max(total[i] - flat[i].reserved - flat[i].done - keep[i], 0);

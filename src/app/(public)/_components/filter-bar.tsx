@@ -86,15 +86,28 @@ export default function FilterBar({
           ))}
         </select>
 
-        <input
-          type="search"
-          defaultValue={q}
-          placeholder="선수명 검색"
-          onKeyDown={(e) => {
-            if (e.key === "Enter") update({ q: (e.target as HTMLInputElement).value });
-          }}
-          className="flex-1 min-w-[140px] rounded-lg border border-zinc-200 bg-white px-3 py-1.5 text-sm"
-        />
+        <div className="flex flex-1 min-w-[160px] gap-1.5">
+          <input
+            id="card-search"
+            type="search"
+            defaultValue={q}
+            placeholder="선수명 검색"
+            onKeyDown={(e) => {
+              if (e.key === "Enter") update({ q: (e.target as HTMLInputElement).value });
+            }}
+            className="flex-1 rounded-lg border border-zinc-200 bg-white px-3 py-1.5 text-sm"
+          />
+          <button
+            type="button"
+            onClick={() => {
+              const el = document.getElementById("card-search") as HTMLInputElement | null;
+              update({ q: el?.value ?? "" });
+            }}
+            className="rounded-lg bg-zinc-900 px-3 py-1.5 text-sm font-medium text-white hover:bg-zinc-700"
+          >
+            검색
+          </button>
+        </div>
       </div>
     </div>
   );

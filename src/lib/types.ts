@@ -11,6 +11,7 @@ export type PublicCard = {
   card_type_id: number;
   card_type_name: string;
   card_type_code: string;
+  card_type_sort: number;
   card_number: string | null;
   variant: string | null;
   title: string | null;
@@ -48,7 +49,6 @@ export type CardCatalog = {
   card_number: string | null;
   variant: string | null;
   title: string | null;
-  image_url: string | null;
   price_override: number | null;
   is_special: boolean;
   memo: string | null;

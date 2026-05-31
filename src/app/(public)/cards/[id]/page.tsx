@@ -3,7 +3,9 @@ import { notFound } from "next/navigation";
 import { createClient } from "@/lib/supabase/server";
 import type { CardDeal, PublicCard } from "@/lib/types";
 import { cardDisplayName, formatPrice, statusColor, statusLabel } from "@/lib/cards";
+import { TABLE_LABEL } from "@/lib/audit";
 import CardAdminPanel from "./card-admin-panel";
+import CardHistory, { type HistoryEntry } from "./card-history";
 
 export const dynamic = "force-dynamic";
 
@@ -27,6 +29,7 @@ export default async function CardDetailPage({
 
   let holding = { qty_total: 0, qty_keep: 0, is_wanted: false };
   let deals: CardDeal[] = [];
+  let history: HistoryEntry[] = [];
   if (user) {
     const { data: h } = await supabase
       .from("card_holdings")
@@ -42,6 +45,27 @@ export default async function CardDetailPage({
       .eq("owner_id", user.id)
       .order("created_at", { ascending: false });
     deals = (d ?? []) as CardDeal[];
+
+    // 이 카드 변경 이력 (어드민 공용 — 행위자명 매핑)
+    const { data: logs } = await supabase
+      .from("audit_log")
+      .select("id, table_name, action, actor, changes, changed_at")
+      .eq("card_id", cardId)
+      .order("changed_at", { ascending: false })
+      .limit(50);
+    if (logs && logs.length) {
+      const { data: profs } = await supabase.from("admin_profiles").select("id, display_name");
+      const nameOf = new Map<string, string>();
+      for (const p of profs ?? []) nameOf.set(p.id as string, (p.display_name as string) ?? "");
+      history = logs.map((l) => ({
+        id: l.id as number,
+        table_label: TABLE_LABEL[l.table_name as string] ?? (l.table_name as string),
+        action: l.action as string,
+        actor: l.actor ? nameOf.get(l.actor as string) || `${(l.actor as string).slice(0, 8)}…` : "—",
+        changes: l.changes as Record<string, unknown> | null,
+        changed_at: l.changed_at as string,
+      }));
+    }
   }
 
   return (
@@ -99,12 +123,15 @@ export default async function CardDetailPage({
       </div>
 
       {user && (
-        <CardAdminPanel
-          cardId={cardId}
-          cardTitle={cardDisplayName(card)}
-          initialHolding={holding}
-          initialDeals={deals}
-        />
+        <>
+          <CardAdminPanel
+            cardId={cardId}
+            cardTitle={cardDisplayName(card)}
+            initialHolding={holding}
+            initialDeals={deals}
+          />
+          <CardHistory entries={history} />
+        </>
       )}
     </div>
   );

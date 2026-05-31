@@ -7,6 +7,7 @@ const NAV = [
   { href: "/admin", label: "대시보드" },
   { href: "/admin/holdings", label: "보유 입력" },
   { href: "/admin/wishlist", label: "희망 입력" },
+  { href: "/admin/deals", label: "거래 리스트" },
   { href: "/admin/cards", label: "카드 관리" },
   { href: "/admin/prices", label: "가격 설정" },
   { href: "/admin/logs", label: "수정 로그" },

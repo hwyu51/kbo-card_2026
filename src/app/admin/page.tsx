@@ -41,15 +41,30 @@ export default async function AdminDashboard() {
         <span className="text-sm text-zinc-400">등록 카드 종류 {totalTypes}종</span>
       </div>
 
-      <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-4 xl:grid-cols-7">
-        <Stat label="보유 총 장수" value={owned} sub="가능 + 예약 (전체)" />
-        <Stat label="판매/교환 가능" value={available} />
-        <Stat label="예약중" value={reserved} />
-        <Stat label="거래 완료" value={myCompleted} sub="내 방출 기준" />
-        <Stat label="소장(비매)" value={myKeep} sub="내 기준" />
-        <Stat label="미보유" value={`${notOwnedTypes}종`} />
-        <Stat label="희망" value={`${wantedTypes}종`} />
-      </div>
+      {/* 전체 공개 지표 (모든 관리자 합산 — 공개 페이지와 동일 기준) */}
+      <section className="flex flex-col gap-2">
+        <h2 className="text-xs font-semibold uppercase tracking-wide text-zinc-400">
+          전체 공개 지표 · 관리자 합산
+        </h2>
+        <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-5">
+          <Stat label="보유 총 장수" value={owned} sub="가능 + 예약" />
+          <Stat label="판매/교환 가능" value={available} />
+          <Stat label="예약중" value={reserved} />
+          <Stat label="미보유" value={`${notOwnedTypes}종`} />
+          <Stat label="희망" value={`${wantedTypes}종`} />
+        </div>
+      </section>
+
+      {/* 내 기록 (RLS상 본인 행만 — 다른 관리자 수치는 포함되지 않음) */}
+      <section className="flex flex-col gap-2">
+        <h2 className="text-xs font-semibold uppercase tracking-wide text-zinc-400">
+          내 기록 · 나만 보임
+        </h2>
+        <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-5">
+          <Stat label="거래 완료" value={myCompleted} sub="내 방출 기준" />
+          <Stat label="소장(비매)" value={myKeep} sub="공개 숨김" />
+        </div>
+      </section>
 
       {totalTypes === 0 && (
         <div className="rounded-xl border border-dashed border-zinc-300 p-8 text-center text-sm text-zinc-500">
@@ -57,13 +72,13 @@ export default async function AdminDashboard() {
         </div>
       )}
 
-      <div className="grid gap-3 sm:grid-cols-2">
+      <div className="grid gap-3 sm:grid-cols-3">
         <Link
           href="/admin/holdings"
           className="rounded-xl border border-zinc-200 bg-white p-5 hover:shadow-sm"
         >
           <div className="font-semibold">보유 입력 →</div>
-          <div className="text-sm text-zinc-500">구단별 카탈로그에 가능/예약/완료 수량 입력</div>
+          <div className="text-sm text-zinc-500">구단별 카탈로그에 보유/소장 수량 입력</div>
         </Link>
         <Link
           href="/admin/wishlist"
@@ -71,6 +86,13 @@ export default async function AdminDashboard() {
         >
           <div className="font-semibold">희망 입력 →</div>
           <div className="text-sm text-zinc-500">찾는 카드 체크 · 구단 일괄 희망 지정</div>
+        </Link>
+        <Link
+          href="/admin/deals"
+          className="rounded-xl border border-zinc-200 bg-white p-5 hover:shadow-sm"
+        >
+          <div className="font-semibold">거래 리스트 →</div>
+          <div className="text-sm text-zinc-500">예약중/완료 거래를 한눈에 · 완료 처리</div>
         </Link>
       </div>
     </div>

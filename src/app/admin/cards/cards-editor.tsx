@@ -58,7 +58,6 @@ export default function CardsEditor({ rows }: { rows: CardEditRow[] }) {
   if (rows.length === 0)
     return <p className="text-sm text-zinc-500">이 구단의 카드가 없어요.</p>;
 
-  let lastPlayer = -1;
   return (
     <div className="flex flex-col gap-3">
       <div className="sticky top-0 z-10 -mx-4 flex items-center justify-between border-b border-zinc-200 bg-zinc-50/95 px-4 py-2 backdrop-blur">
@@ -86,9 +85,8 @@ export default function CardsEditor({ rows }: { rows: CardEditRow[] }) {
             </tr>
           </thead>
           <tbody>
-            {rows.map((r) => {
-              const first = r.player_id !== lastPlayer;
-              lastPlayer = r.player_id;
+            {rows.map((r, i) => {
+              const first = i === 0 || rows[i - 1].player_id !== r.player_id;
               return (
                 <tr key={r.card_id} className={first ? "border-t-2 border-t-zinc-300" : ""}>
                   <td className="border border-zinc-200 px-2 py-1 whitespace-nowrap">
