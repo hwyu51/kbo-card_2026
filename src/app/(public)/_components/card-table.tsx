@@ -4,7 +4,17 @@ import { cardDisplayName, formatPrice, statusColor, statusLabel } from "@/lib/ca
 
 // 공개 카드 목록 — 구단별 카탈로그 표. 선수는 구단 안에서 한 번만 표기(〃),
 // 종류/가격/상태/수량을 한 줄에. 행(선수·종류)을 누르면 상세로.
-export default function CardTable({ cards, teams }: { cards: PublicCard[]; teams: Team[] }) {
+export default function CardTable({
+  cards,
+  teams,
+  wishlist = false,
+}: {
+  cards: PublicCard[];
+  teams: Team[];
+  wishlist?: boolean;
+}) {
+  // 희망 보기에서는 판매용 컬럼(가격/상태/가능/예약) 숨김 — "찾는 카드 목록"만
+  const showStock = !wishlist;
   // 구단 순서 → 선수 → 종류(sort) 순 정렬
   const teamOrder = new Map(teams.map((t, i) => [t.slug, i]));
   const sorted = [...cards].sort((a, b) => {
@@ -32,10 +42,14 @@ export default function CardTable({ cards, teams }: { cards: PublicCard[]; teams
           <tr className="bg-zinc-100 text-xs text-zinc-500">
             <th className="px-3 py-2 text-left font-medium">선수</th>
             <th className="px-3 py-2 text-left font-medium">종류</th>
-            <th className="px-3 py-2 text-right font-medium">가격</th>
-            <th className="px-3 py-2 text-center font-medium">상태</th>
-            <th className="px-3 py-2 text-right font-medium">가능</th>
-            <th className="px-3 py-2 text-right font-medium">예약</th>
+            {showStock && (
+              <>
+                <th className="px-3 py-2 text-right font-medium">가격</th>
+                <th className="px-3 py-2 text-center font-medium">상태</th>
+                <th className="px-3 py-2 text-right font-medium">가능</th>
+                <th className="px-3 py-2 text-right font-medium">예약</th>
+              </>
+            )}
           </tr>
         </thead>
         <tbody>
@@ -43,7 +57,7 @@ export default function CardTable({ cards, teams }: { cards: PublicCard[]; teams
             return (
               <FragmentGroup key={g.team}>
                 <tr className="bg-zinc-50">
-                  <td colSpan={6} className="px-3 py-1.5 text-xs font-semibold text-zinc-600">
+                  <td colSpan={showStock ? 6 : 2} className="px-3 py-1.5 text-xs font-semibold text-zinc-600">
                     {g.team}
                     <span className="ml-1.5 font-normal text-zinc-400">{g.rows.length}</span>
                   </td>
@@ -81,20 +95,24 @@ export default function CardTable({ cards, teams }: { cards: PublicCard[]; teams
                           )}
                         </Link>
                       </td>
-                      <td className="px-3 py-2 text-right font-semibold text-zinc-900 whitespace-nowrap">
-                        {formatPrice(c.price)}
-                      </td>
-                      <td className="px-3 py-2 text-center">
-                        <span className={`rounded-full px-2 py-0.5 text-[11px] font-medium ${statusColor(c)}`}>
-                          {statusLabel(c)}
-                        </span>
-                      </td>
-                      <td className="px-3 py-2 text-right font-medium text-emerald-700 whitespace-nowrap">
-                        {c.qty_owned > 0 ? c.qty_available : "—"}
-                      </td>
-                      <td className="px-3 py-2 text-right text-amber-600 whitespace-nowrap">
-                        {c.qty_reserved > 0 ? c.qty_reserved : "—"}
-                      </td>
+                      {showStock && (
+                        <>
+                          <td className="px-3 py-2 text-right font-semibold text-zinc-900 whitespace-nowrap">
+                            {formatPrice(c.price)}
+                          </td>
+                          <td className="px-3 py-2 text-center">
+                            <span className={`rounded-full px-2 py-0.5 text-[11px] font-medium ${statusColor(c)}`}>
+                              {statusLabel(c)}
+                            </span>
+                          </td>
+                          <td className="px-3 py-2 text-right font-medium text-emerald-700 whitespace-nowrap">
+                            {c.qty_owned > 0 ? c.qty_available : "—"}
+                          </td>
+                          <td className="px-3 py-2 text-right text-amber-600 whitespace-nowrap">
+                            {c.qty_reserved > 0 ? c.qty_reserved : "—"}
+                          </td>
+                        </>
+                      )}
                     </tr>
                   );
                 })}

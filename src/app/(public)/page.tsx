@@ -84,7 +84,7 @@ export default async function HomePage({
           조건에 맞는 카드가 없어요.
         </div>
       ) : (
-        <CardTable cards={filtered} teams={teams} />
+        <CardTable cards={filtered} teams={teams} wishlist={view === "wanted"} />
       )}
     </div>
   );
