@@ -5,8 +5,6 @@ import { useRouter } from "next/navigation";
 import type { PlayerGroup } from "@/lib/admin-catalog";
 import { saveHoldings, type HoldingRow } from "../actions";
 
-type Qty = { a: number; r: number; c: number };
-
 export default function WishlistEditor({
   teamName,
   groups,
@@ -18,16 +16,16 @@ export default function WishlistEditor({
   const [pending, start] = useTransition();
   const [msg, setMsg] = useState<string | null>(null);
 
-  // 보존용 수량 + 초기 희망값
+  // 보유/소장은 보존, 희망만 토글
   const base = useMemo(() => {
-    const qty: Record<number, Qty> = {};
+    const hold: Record<number, { total: number; keep: number }> = {};
     const wanted: Record<number, boolean> = {};
     for (const g of groups)
       for (const c of g.cards) {
-        qty[c.card_id] = { a: c.qty_available, r: c.qty_reserved, c: c.qty_completed };
+        hold[c.card_id] = { total: c.qty_total, keep: c.qty_keep };
         wanted[c.card_id] = c.is_wanted;
       }
-    return { qty, wanted };
+    return { hold, wanted };
   }, [groups]);
 
   const [wanted, setWanted] = useState<Record<number, boolean>>(base.wanted);
@@ -36,16 +34,14 @@ export default function WishlistEditor({
   const allOn = allIds.length > 0 && allIds.every((id) => wanted[id]);
 
   const toggle = (id: number) => setWanted((p) => ({ ...p, [id]: !p[id] }));
-  const setAll = (val: boolean) =>
-    setWanted(() => Object.fromEntries(allIds.map((id) => [id, val])));
+  const setAll = (val: boolean) => setWanted(Object.fromEntries(allIds.map((id) => [id, val])));
 
   const onSave = () => {
     setMsg(null);
     const rows: HoldingRow[] = allIds.map((id) => ({
       card_id: id,
-      qty_available: base.qty[id]?.a ?? 0,
-      qty_reserved: base.qty[id]?.r ?? 0,
-      qty_completed: base.qty[id]?.c ?? 0,
+      qty_total: base.hold[id]?.total ?? 0,
+      qty_keep: base.hold[id]?.keep ?? 0,
       is_wanted: !!wanted[id],
     }));
     start(async () => {
@@ -53,15 +49,12 @@ export default function WishlistEditor({
       if (res.ok) {
         setMsg("저장됐어요.");
         router.refresh();
-      } else {
-        setMsg(`저장 실패: ${res.error}`);
-      }
+      } else setMsg(`저장 실패: ${res.error}`);
     });
   };
 
-  if (groups.length === 0) {
+  if (groups.length === 0)
     return <p className="text-sm text-zinc-500">이 구단의 카탈로그가 비어 있어요.</p>;
-  }
 
   return (
     <div className="flex flex-col gap-4">
@@ -92,7 +85,6 @@ export default function WishlistEditor({
               {g.jersey_no != null && <span className="text-xs text-zinc-400">#{g.jersey_no}</span>}
               {g.position && <span className="text-xs text-zinc-400">{g.position}</span>}
             </div>
-
             <div className="flex flex-wrap gap-1.5">
               {g.cards.map((c) => (
                 <button

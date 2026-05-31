@@ -10,11 +10,12 @@ export type CatalogCard = {
   card_number: string | null;
   variant: string | null;
   is_special: boolean;
-  // 현재 로그인 유저의 보유/희망 (없으면 0/false)
-  qty_available: number;
-  qty_reserved: number;
-  qty_completed: number;
+  // 현재 로그인 유저 기준
+  qty_total: number; // 보유
+  qty_keep: number; // 소장
   is_wanted: boolean;
+  reserved: number; // 방출 예약중 건수
+  done: number; // 방출 완료 건수
 };
 
 export type PlayerGroup = {
@@ -37,7 +38,6 @@ function one<T>(v: ToOne<T>): T | null {
   return Array.isArray(v) ? (v[0] ?? null) : v;
 }
 
-// 팀별 카탈로그(선수 그룹) + 현재 유저의 holdings 병합
 export async function loadTeamCatalog(teamSlug?: string): Promise<TeamCatalog | null> {
   const supabase = await createClient();
   const {
@@ -65,23 +65,30 @@ export async function loadTeamCatalog(teamSlug?: string): Promise<TeamCatalog | 
 
   const { data: holdData } = await supabase
     .from("card_holdings")
-    .select("card_id, qty_available, qty_reserved, qty_completed, is_wanted")
+    .select("card_id, qty_total, qty_keep, is_wanted")
     .eq("owner_id", user.id);
-
-  const holdMap = new Map<
-    number,
-    { qty_available: number; qty_reserved: number; qty_completed: number; is_wanted: boolean }
-  >();
-  for (const h of holdData ?? []) {
+  const holdMap = new Map<number, { qty_total: number; qty_keep: number; is_wanted: boolean }>();
+  for (const h of holdData ?? [])
     holdMap.set(h.card_id as number, {
-      qty_available: Number(h.qty_available) || 0,
-      qty_reserved: Number(h.qty_reserved) || 0,
-      qty_completed: Number(h.qty_completed) || 0,
+      qty_total: Number(h.qty_total) || 0,
+      qty_keep: Number(h.qty_keep) || 0,
       is_wanted: Boolean(h.is_wanted),
     });
+
+  // 방출 거래 건수 (예약중/완료) — 현재 유저
+  const { data: dealData } = await supabase
+    .from("card_deals")
+    .select("card_id, status, direction")
+    .eq("owner_id", user.id)
+    .eq("direction", "out");
+  const dealMap = new Map<number, { reserved: number; done: number }>();
+  for (const d of dealData ?? []) {
+    const cur = dealMap.get(d.card_id as number) ?? { reserved: 0, done: 0 };
+    if (d.status === "reserved") cur.reserved++;
+    else if (d.status === "done") cur.done++;
+    dealMap.set(d.card_id as number, cur);
   }
 
-  // 선수별 그룹화
   const groups = new Map<number, PlayerGroup>();
   for (const row of (cardsData ?? []) as Record<string, unknown>[]) {
     const player = one(row.players as ToOne<{ name: string; position: string | null; jersey_no: number | null }>);
@@ -98,6 +105,7 @@ export async function loadTeamCatalog(teamSlug?: string): Promise<TeamCatalog | 
       });
     }
     const h = holdMap.get(row.id as number);
+    const d = dealMap.get(row.id as number);
     groups.get(pid)!.cards.push({
       card_id: row.id as number,
       card_type_id: row.card_type_id as number,
@@ -107,14 +115,14 @@ export async function loadTeamCatalog(teamSlug?: string): Promise<TeamCatalog | 
       card_number: (row.card_number as string | null) ?? null,
       variant: (row.variant as string | null) ?? null,
       is_special: Boolean(row.is_special),
-      qty_available: h?.qty_available ?? 0,
-      qty_reserved: h?.qty_reserved ?? 0,
-      qty_completed: h?.qty_completed ?? 0,
+      qty_total: h?.qty_total ?? 0,
+      qty_keep: h?.qty_keep ?? 0,
       is_wanted: h?.is_wanted ?? false,
+      reserved: d?.reserved ?? 0,
+      done: d?.done ?? 0,
     });
   }
 
-  // 각 선수 카드: 종류 정렬 / 그룹: 선수 id(=카탈로그 순서)
   const sorted = [...groups.values()].sort((a, b) => (a.player_id ?? 1e9) - (b.player_id ?? 1e9));
   for (const g of sorted) g.cards.sort((a, b) => a.card_type_sort - b.card_type_sort);
 

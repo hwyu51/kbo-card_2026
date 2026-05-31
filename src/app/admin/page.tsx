@@ -17,10 +17,11 @@ export default async function AdminDashboard() {
   const supabase = await createClient();
 
   // 합산 통계는 public_cards 뷰(owner 전체 합산) 기준.
-  // 완료수량은 뷰에 없고 RLS상 본인 행만 보이므로 "내 입력" 기준으로만 표시.
-  const [{ data: pub }, { data: ownHold }] = await Promise.all([
+  // 완료/소장은 RLS상 본인 행만 보이므로 "내 기준"으로 표시.
+  const [{ data: pub }, { data: ownHold }, { data: ownDeals }] = await Promise.all([
     supabase.from("public_cards").select("qty_owned, qty_available, qty_reserved, is_wanted"),
-    supabase.from("card_holdings").select("qty_completed"),
+    supabase.from("card_holdings").select("qty_keep"),
+    supabase.from("card_deals").select("id").eq("direction", "out").eq("status", "done"),
   ]);
 
   const rows = pub ?? [];
@@ -30,7 +31,8 @@ export default async function AdminDashboard() {
   const wantedTypes = rows.filter((r) => r.is_wanted).length;
   const notOwnedTypes = rows.filter((r) => Number(r.qty_owned ?? 0) === 0).length;
   const totalTypes = rows.length;
-  const myCompleted = (ownHold ?? []).reduce((s, r) => s + Number(r.qty_completed ?? 0), 0);
+  const myKeep = (ownHold ?? []).reduce((s, r) => s + Number(r.qty_keep ?? 0), 0);
+  const myCompleted = (ownDeals ?? []).length;
 
   return (
     <div className="flex flex-col gap-6">
@@ -39,11 +41,12 @@ export default async function AdminDashboard() {
         <span className="text-sm text-zinc-400">등록 카드 종류 {totalTypes}종</span>
       </div>
 
-      <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-6">
+      <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-4 xl:grid-cols-7">
         <Stat label="보유 총 장수" value={owned} sub="가능 + 예약 (전체)" />
         <Stat label="판매/교환 가능" value={available} />
         <Stat label="예약중" value={reserved} />
-        <Stat label="거래 완료" value={myCompleted} sub="내 입력 기준" />
+        <Stat label="거래 완료" value={myCompleted} sub="내 방출 기준" />
+        <Stat label="소장(비매)" value={myKeep} sub="내 기준" />
         <Stat label="미보유" value={`${notOwnedTypes}종`} />
         <Stat label="희망" value={`${wantedTypes}종`} />
       </div>
