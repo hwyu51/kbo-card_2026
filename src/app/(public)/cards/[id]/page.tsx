@@ -47,6 +47,11 @@ export default async function CardDetailPage({
 
         <div className="flex flex-col gap-4">
           <div className="flex flex-wrap gap-1.5">
+            {card.is_special && (
+              <span className="rounded-full bg-violet-100 px-2.5 py-1 text-xs font-medium text-violet-700">
+                레전드
+              </span>
+            )}
             {card.is_wanted && (
               <span className="rounded-full bg-rose-100 px-2.5 py-1 text-xs font-medium text-rose-600">
                 희망 카드

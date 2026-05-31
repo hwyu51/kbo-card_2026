@@ -3,13 +3,6 @@ import { createClient } from "@/lib/supabase/server";
 
 export const dynamic = "force-dynamic";
 
-type Row = {
-  qty_available: number;
-  qty_reserved: number;
-  qty_completed: number;
-  is_wanted: boolean;
-};
-
 function Stat({ label, value, sub }: { label: string; value: string | number; sub?: string }) {
   return (
     <div className="rounded-xl border border-zinc-200 bg-white p-4">
@@ -22,63 +15,59 @@ function Stat({ label, value, sub }: { label: string; value: string | number; su
 
 export default async function AdminDashboard() {
   const supabase = await createClient();
-  const { data } = await supabase
-    .from("cards")
-    .select("qty_available, qty_reserved, qty_completed, is_wanted");
 
-  const rows = (data ?? []) as Row[];
+  // 합산 통계는 public_cards 뷰(owner 전체 합산) 기준.
+  // 완료수량은 뷰에 없고 RLS상 본인 행만 보이므로 "내 입력" 기준으로만 표시.
+  const [{ data: pub }, { data: ownHold }] = await Promise.all([
+    supabase.from("public_cards").select("qty_owned, qty_available, qty_reserved, is_wanted"),
+    supabase.from("card_holdings").select("qty_completed"),
+  ]);
 
-  const owned = rows.reduce((s, r) => s + r.qty_available + r.qty_reserved, 0);
-  const available = rows.reduce((s, r) => s + r.qty_available, 0);
-  const reserved = rows.reduce((s, r) => s + r.qty_reserved, 0);
-  const completed = rows.reduce((s, r) => s + r.qty_completed, 0);
-  const notOwnedTypes = rows.filter((r) => r.qty_available + r.qty_reserved === 0).length;
+  const rows = pub ?? [];
+  const owned = rows.reduce((s, r) => s + Number(r.qty_owned ?? 0), 0);
+  const available = rows.reduce((s, r) => s + Number(r.qty_available ?? 0), 0);
+  const reserved = rows.reduce((s, r) => s + Number(r.qty_reserved ?? 0), 0);
   const wantedTypes = rows.filter((r) => r.is_wanted).length;
+  const notOwnedTypes = rows.filter((r) => Number(r.qty_owned ?? 0) === 0).length;
+  const totalTypes = rows.length;
+  const myCompleted = (ownHold ?? []).reduce((s, r) => s + Number(r.qty_completed ?? 0), 0);
 
   return (
     <div className="flex flex-col gap-6">
       <div className="flex items-center justify-between">
         <h1 className="text-xl font-bold">대시보드</h1>
-        <span className="text-sm text-zinc-400">등록 카드 종류 {rows.length}종</span>
+        <span className="text-sm text-zinc-400">등록 카드 종류 {totalTypes}종</span>
       </div>
 
       <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-6">
-        <Stat label="보유 총 장수" value={owned} sub="가능 + 예약" />
+        <Stat label="보유 총 장수" value={owned} sub="가능 + 예약 (전체)" />
         <Stat label="판매/교환 가능" value={available} />
         <Stat label="예약중" value={reserved} />
-        <Stat label="거래 완료" value={completed} sub="공개 숨김" />
+        <Stat label="거래 완료" value={myCompleted} sub="내 입력 기준" />
         <Stat label="미보유" value={`${notOwnedTypes}종`} />
         <Stat label="희망" value={`${wantedTypes}종`} />
       </div>
 
-      {rows.length === 0 && (
+      {totalTypes === 0 && (
         <div className="rounded-xl border border-dashed border-zinc-300 p-8 text-center text-sm text-zinc-500">
-          아직 등록된 카드가 없어요.
-          <div className="mt-3">
-            <Link
-              href="/admin/cards/bulk"
-              className="rounded-lg bg-zinc-900 px-4 py-2 text-white"
-            >
-              CSV로 벌크 업로드 하기 →
-            </Link>
-          </div>
+          아직 카탈로그가 비어 있어요. Supabase에서 <code>schema.sql</code>을 실행하면 카드가 채워집니다.
         </div>
       )}
 
       <div className="grid gap-3 sm:grid-cols-2">
         <Link
-          href="/admin/cards"
+          href="/admin/holdings"
           className="rounded-xl border border-zinc-200 bg-white p-5 hover:shadow-sm"
         >
-          <div className="font-semibold">카드 관리 →</div>
-          <div className="text-sm text-zinc-500">등록·수정, 수량/가격/희망, 예약·완료 리스트</div>
+          <div className="font-semibold">보유 입력 →</div>
+          <div className="text-sm text-zinc-500">구단별 카탈로그에 가능/예약/완료 수량 입력</div>
         </Link>
         <Link
-          href="/admin/cards/bulk"
+          href="/admin/wishlist"
           className="rounded-xl border border-zinc-200 bg-white p-5 hover:shadow-sm"
         >
-          <div className="font-semibold">벌크 업로드 →</div>
-          <div className="text-sm text-zinc-500">CSV 양식으로 보유 카드 일괄 등록/갱신</div>
+          <div className="font-semibold">희망 입력 →</div>
+          <div className="text-sm text-zinc-500">찾는 카드 체크 · 구단 일괄 희망 지정</div>
         </Link>
       </div>
     </div>

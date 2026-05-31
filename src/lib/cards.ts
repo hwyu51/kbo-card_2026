@@ -25,7 +25,9 @@ export function statusColor(c: Pick<PublicCard, "qty_available" | "qty_reserved"
   return "bg-zinc-100 text-zinc-500";
 }
 
+// 0(또는 음수) = 가격 미정 → "가격문의" (예: 친필사인/오토)
 export function formatPrice(won: number): string {
+  if (won <= 0) return "가격문의";
   return `${won.toLocaleString("ko-KR")}원`;
 }
 

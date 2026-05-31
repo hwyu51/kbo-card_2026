@@ -5,9 +5,11 @@ import { logout } from "../login/actions";
 
 const NAV = [
   { href: "/admin", label: "대시보드" },
+  { href: "/admin/holdings", label: "보유 입력" },
+  { href: "/admin/wishlist", label: "희망 입력" },
   { href: "/admin/cards", label: "카드 관리" },
-  { href: "/admin/cards/bulk", label: "벌크 업로드" },
   { href: "/admin/prices", label: "가격 설정" },
+  { href: "/admin/logs", label: "수정 로그" },
 ];
 
 export default async function AdminLayout({

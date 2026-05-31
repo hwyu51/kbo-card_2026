@@ -23,6 +23,11 @@ export default function CardItem({ card }: { card: PublicCard }) {
           </div>
         )}
         <div className="absolute left-2 top-2 flex gap-1">
+          {card.is_special && (
+            <span className="rounded-full bg-violet-100 px-2 py-0.5 text-[11px] font-medium text-violet-700">
+              레전드
+            </span>
+          )}
           {card.is_wanted && (
             <span className="rounded-full bg-rose-100 px-2 py-0.5 text-[11px] font-medium text-rose-600">
               희망
